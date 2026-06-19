@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HHPE KT Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f7f8fc;--surface:#fff;--surface2:#f0f2f8;--border:#e2e6f0;
+  --text:#1a1d2e;--muted:#6b7280;--accent:#2563eb;
+  --green:#16a34a;--amber:#d97706;--red:#dc2626;
+  --green-bg:#dcfce7;--amber-bg:#fef3c7;--red-bg:#fee2e2;--blue-bg:#dbeafe;
+  --green-t:#15803d;--amber-t:#92400e;--red-t:#991b1b;--blue-t:#1d4ed8;
+  --shadow:0 1px 6px rgba(0,0,0,.08);--r:10px;--rsm:6px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+
+/* ── LOADING ── */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;z-index:200}
+.spinner{width:44px;height:44px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading p{font-size:14px;color:var(--muted);max-width:320px;text-align:center;line-height:1.6}
+#loading strong{color:var(--text)}
+
+/* ── CONFIG BANNER ── */
+#config-banner{background:#1e293b;color:#fff;padding:1rem 1.5rem;text-align:center;font-size:13px;line-height:1.7;display:none}
+#config-banner a{color:#93c5fd;text-decoration:underline}
+#config-banner code{background:#334155;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:12px}
+
+/* ── TOPNAV ── */
+#dashboard{display:none}
+.topnav{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.5rem;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:var(--shadow)}
+.nav-brand{display:flex;align-items:center;gap:10px}
+.live-dot{width:9px;height:9px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.nav-title{font-size:15px;font-weight:700}
+.nav-sub{font-size:11px;color:var(--muted)}
+.nav-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{font-size:11px;padding:3px 11px;border-radius:20px;font-weight:600}
+.badge-live{background:var(--green-bg);color:var(--green-t)}
+.badge-err{background:var(--red-bg);color:var(--red-t)}
+.flash{font-size:11px;color:var(--green);font-weight:500;opacity:0;transition:opacity .3s}
+.flash.on{opacity:1}
+.nav-sel{font-size:12px;padding:5px 10px;border-radius:var(--rsm);border:1px solid var(--border);background:var(--surface2);color:var(--text);cursor:pointer}
+
+/* ── REFRESH BANNER ── */
+#refresh-bar{display:none;background:var(--green-bg);border-bottom:1px solid #86efac;padding:.45rem 1.5rem;font-size:12px;color:var(--green-t);font-weight:500;text-align:center}
+
+/* ── LAYOUT ── */
+.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.25rem}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem 1.1rem;box-shadow:var(--shadow);transition:transform .2s}
+.metric:hover{transform:translateY(-2px)}
+.metric-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem}
+.metric-val{font-size:30px;font-weight:800;line-height:1;margin-bottom:.25rem;transition:all .4s}
+.metric-sub{font-size:11px;color:var(--muted)}
+.c-blue{color:var(--accent)}.c-green{color:var(--green)}.c-amber{color:var(--amber)}.c-red{color:var(--red)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.card,.full-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem;box-shadow:var(--shadow)}
+.full-card{margin-bottom:12px}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;flex-wrap:wrap;gap:8px}
+.card-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+.ld{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
+
+/* ── HEATMAP ── */
+.hm-wrap{overflow-x:auto}
+.hm-grid{display:grid;gap:3px;margin-bottom:3px}
+.hm-cell{height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;cursor:default;position:relative;transition:transform .12s}
+.hm-cell:hover{transform:scale(1.1);z-index:5}
+.hm-done{background:#bbf7d0;color:#166534}.hm-prog{background:#fde68a;color:#92400e}
+.hm-ns{background:#fecaca;color:#991b1b}.hm-def{background:#e5e7eb;color:#6b7280}
+.hm-lbl{font-size:9px;color:var(--muted);text-align:center;line-height:1.3;padding:0 2px}
+.tipbox{position:absolute;background:#1a1d2e;color:#fff;font-size:11px;padding:5px 10px;border-radius:5px;white-space:nowrap;pointer-events:none;bottom:calc(100%+6px);left:50%;transform:translateX(-50%);z-index:100;display:none;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.hm-cell:hover .tipbox{display:block}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:2px solid var(--border);text-align:left;font-weight:600}
+.tbl td{padding:10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surface2)}
+.avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.prog-track{height:7px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.prog-bar{height:100%;border-radius:4px;transition:width .8s ease}
+.pill{font-size:10px;padding:3px 10px;border-radius:20px;font-weight:600;white-space:nowrap}
+.p-done{background:var(--green-bg);color:var(--green-t)}.p-prog{background:var(--amber-bg);color:var(--amber-t)}
+.p-ns{background:var(--red-bg);color:var(--red-t)}.p-def{background:var(--surface2);color:var(--muted)}
+.fbtn{font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.fbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.fbtn:hover:not(.on){background:var(--surface2)}
+
+/* ── SLICER ── */
+.slicer-sel{appearance:none;-webkit-appearance:none;font-size:13px;font-weight:600;padding:7px 36px 7px 14px;border-radius:var(--rsm);border:1.5px solid var(--accent);background:var(--blue-bg);color:var(--blue-t);cursor:pointer;outline:none;min-width:200px}
+.slicer-wrap{position:relative;display:inline-block}
+.slicer-arrow{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:11px;color:var(--blue-t)}
+.cnt-badge{font-size:11px;padding:3px 11px;border-radius:20px;background:var(--blue-bg);color:var(--blue-t);font-weight:600}
+.topic-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:.5px solid var(--border)}
+.topic-row:last-child{border-bottom:none}
+.topic-name{flex:1;font-size:12px}
+.pri{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.pri-h{background:var(--amber-bg);color:var(--amber-t)}.pri-m{background:var(--green-bg);color:var(--green-t)}
+.chip{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+.sess-grp{font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;padding:12px 0 6px;border-top:1.5px solid var(--border);margin-top:4px}
+.empty{text-align:center;padding:2.5rem;color:var(--muted);font-size:13px}
+
+@media(max-width:768px){.metrics{grid-template-columns:1fr 1fr}.two-col{grid-template-columns:1fr}}
+@media(max-width:480px){.metrics{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <p id="loading-msg"><strong>Loading dashboard…</strong><br>Fetching data from Google Sheets</p>
+</div>
+
+<!-- Config banner (shown if SHEET_ID not set) -->
+<div id="config-banner">
+  ⚙️ <strong>Setup required:</strong> Open this file, find <code>SHEET_ID</code> at the top of the script, and paste your Google Sheet ID there.
+  <a href="#" onclick="document.getElementById('setup-guide').scrollIntoView()">See instructions below ↓</a>
+</div>
+
+<!-- Refresh banner -->
+<div id="refresh-bar">✅ Data refreshed from Google Sheets</div>
+
+<!-- Dashboard -->
+<div id="dashboard">
+  <nav class="topnav">
+    <div class="nav-brand">
+      <div class="live-dot"></div>
+      <div>
+        <div class="nav-title">HHPE Knowledge Transfer Dashboard</div>
+        <div class="nav-sub" id="nav-sub">Loading…</div>
+      </div>
+    </div>
+    <div class="nav-right">
+      <span class="badge badge-live" id="conn-badge">● Live</span>
+      <span class="flash" id="flash-msg">↻ Refreshed</span>
+      <select class="nav-sel" id="cohort-sel" onchange="renderAll()">
+        <option value="all">All Candidates</option>
+      </select>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Total Candidates</div><div class="metric-val c-blue" id="m-total">—</div><div class="metric-sub">Active trainees</div></div>
+      <div class="metric"><div class="metric-label">Sessions Completed</div><div class="metric-val c-green" id="m-done">—</div><div class="metric-sub" id="m-done-sub">out of — total</div></div>
+      <div class="metric"><div class="metric-label">In Progress</div><div class="metric-val c-amber" id="m-prog">—</div><div class="metric-sub">Sessions ongoing</div></div>
+      <div class="metric"><div class="metric-label">Avg. Progress</div><div class="metric-val c-red" id="m-avg">—</div><div class="metric-sub">Across cohort</div></div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">Cohort radar</span><div class="legend" id="radar-legend"></div></div>
+        <div style="position:relative;height:230px"><canvas id="radarChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">Status breakdown</span>
+          <div class="legend">
+            <span><span class="ld" style="background:#16a34a"></span>Completed</span>
+            <span><span class="ld" style="background:#d97706"></span>In Progress</span>
+            <span><span class="ld" style="background:#dc2626"></span>Not Started</span>
+          </div>
+        </div>
+        <div style="position:relative;height:200px"><canvas id="donutChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="full-card">
+      <div class="card-hdr">
+        <span class="card-title">Session heatmap</span>
+        <div class="legend">
+          <span><span class="ld" style="background:#bbf7d0"></span>Completed</span>
+          <span><span class="ld" style="background:#fde68a"></span>In Progress</span>
+          <span><span class="ld" style="background:#fecaca"></span>Not Started</span>
+          <span><span class="ld" style="background:#e5e7eb"></span>Deferred</span>
+        </div>
+      </div>
+      <div class="hm-wrap">
+        <div id="hm-labels" style="display:grid;gap:3px;margin-bottom:4px"></div>
+        <div id="hm-area"></div>
+      </div>
+    </div>
+
+    <div class="full-card">
+      <div class="card-hdr">
+        <span class="card-title">Candidate details</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="fbtn on" onclick="ftbl(this,'all')">All</button>
+          <button class="fbtn" onclick="ftbl(this,'Completed')">Completed</button>
+          <button class="fbtn" onclick="ftbl(this,'In Progress')">In Progress</button>
+          <button class="fbtn" onclick="ftbl(this,'Not Started')">Not Started</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tbl">
+          <thead><tr><th>#</th><th>Trainee</th><th style="min-width:160px">Progress</th><th>Done</th><th>Prog</th><th>Status</th><th>Join Date</th></tr></thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="full-card">
+      <div class="card-hdr">
+        <span class="card-title">Topics checklist by session</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-size:12px;color:var(--muted);font-weight:600">📂 Session:</label>
+          <div class="slicer-wrap">
+            <select class="slicer-sel" id="sess-slicer" onchange="onSlicer()"></select>
+            <span class="slicer-arrow">▾</span>
+          </div>
+          <span class="cnt-badge" id="cnt-badge"></span>
+        </div>
+      </div>
+      <div id="topics-panel"></div>
+    </div>
+
+    <div class="full-card" style="margin-bottom:0">
+      <div class="card-hdr">
+        <span class="card-title">Session completion per candidate</span>
+        <div class="legend" id="bar-legend"></div>
+      </div>
+      <div style="position:relative;height:230px"><canvas id="barChart"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  ▶▶  PASTE YOUR GOOGLE SHEET ID HERE  ◀◀
+//  How to find it: open your Google Sheet → look at the URL:
+//  https://docs.google.com/spreadsheets/d/  SHEET_ID_IS_HERE  /edit
+// ════════════════════════════════════════════════════════════
+const SHEET_ID = '1TO-ZgEqU0VzExXhezj4ejR9rZxPFUCDSnQPmbtIxPIw';
+
+// Sheet tab names (must match exactly what's in your Google Sheet)
+const PROGRESS_TAB  = 'Candidate Progress';
+const CHECKLIST_TAB = 'Topics Checklist';
+
+// How often to auto-refresh (milliseconds). 30000 = 30 seconds
+const REFRESH_MS = 30000;
+
+// ════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ════════════════════════════════════════════════════════════
+const COLORS  = ['#2563eb','#16a34a','#d97706','#7c3aed','#dc2626','#0891b2','#be185d'];
+const AV_BG   = ['#dbeafe','#dcfce7','#fef3c7','#ede9fe','#fee2e2','#cffafe','#fce7f3'];
+const SV      = {'Completed':1,'In Progress':.5,'Not Started':0,'Deferred':0};
+const SNORM   = {'completed':'Completed','complete':'Completed','done':'Completed',
+                 'in progress':'In Progress','inprogress':'In Progress','ongoing':'In Progress',
+                 'not started':'Not Started','notstarted':'Not Started','pending':'Not Started','':'Not Started',
+                 'deferred':'Deferred','n/a':'N/A'};
+const hmCls  = s=>s==='Completed'?'hm-done':s==='In Progress'?'hm-prog':s==='Deferred'?'hm-def':'hm-ns';
+const pillCls= s=>s==='Completed'?'p-done':s==='In Progress'?'p-prog':s==='Deferred'?'p-def':'p-ns';
+const inits  = n=>n.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+const norm   = v=>SNORM[String(v??'').trim().toLowerCase()]||String(v??'').trim()||'Not Started';
+
+// ════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════
+let allData   = {candidates:[],sessions:[],topics:{}};
+let charts    = {};
+let tblFilter = 'all';
+let slicerVal = '__all';
+let isFirstLoad = true;
+
+// ════════════════════════════════════════════════════════════
+//  GOOGLE SHEETS CSV FETCH
+//  Uses the public CSV export URL — no API key needed.
+//  Sheet must be shared as "Anyone with the link can view"
+// ════════════════════════════════════════════════════════════
+function sheetUrl(tabName){
+  const encoded = encodeURIComponent(tabName);
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encoded}`;
+}
+
+async function fetchSheet(tabName){
+  const res = await fetch(sheetUrl(tabName), {cache:'no-store'});
+  if(!res.ok) throw new Error(`Could not fetch sheet "${tabName}" (HTTP ${res.status})`);
+  const text = await res.text();
+  return parseCSV(text);
+}
+
+// Robust CSV parser (handles quoted fields with commas/newlines)
+function parseCSV(text){
+  const rows=[]; let row=[], cur='', inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i], nx=text[i+1];
+    if(inQ){
+      if(ch==='"'&&nx==='"'){cur+='"';i++;}
+      else if(ch==='"'){inQ=false;}
+      else cur+=ch;
+    } else {
+      if(ch==='"'){inQ=true;}
+      else if(ch===','){row.push(cur.trim());cur='';}
+      else if(ch==='\n'||ch==='\r'){
+        row.push(cur.trim()); cur='';
+        if(row.some(c=>c)) rows.push(row);
+        row=[];
+        if(ch==='\r'&&nx==='\n') i++;
+      } else cur+=ch;
+    }
+  }
+  if(cur||row.length) row.push(cur.trim());
+  if(row.some(c=>c)) rows.push(row);
+  return rows;
+}
+
+// ════════════════════════════════════════════════════════════
+//  PARSE DATA FROM SHEETS
+// ════════════════════════════════════════════════════════════
+async function loadData(){
+  const result={candidates:[],sessions:[],topics:{}};
+
+  // ── Candidate Progress tab ──────────────────────────────
+  const pRows = await fetchSheet(PROGRESS_TAB);
+
+  // Find header row (contains "Name" or "Trainee")
+  let hi=-1;
+  for(let i=0;i<Math.min(8,pRows.length);i++){
+    if(pRows[i].some(c=>/name|trainee|candidate/i.test(c))){hi=i;break;}
+  }
+  if(hi>=0){
+    const hdr=pRows[hi];
+    const nc=hdr.findIndex(c=>/name|trainee/i.test(c));
+    const rc=hdr.findIndex(c=>/role|desig/i.test(c));
+    const dc=hdr.findIndex(c=>/join|date/i.test(c));
+    // Session columns: find first S1 / Overview column
+    let sc=hdr.findIndex(c=>/^s1$|overview/i.test(c));
+    if(sc<0) sc=hdr.findIndex((c,i)=>i>Math.max(nc,rc,dc)&&c&&!/progress|done|score|remark/i.test(c));
+    if(sc<0) sc=4;
+
+    // Session labels from header
+    const labels=[];
+    for(let k=0;k<10&&sc+k<hdr.length;k++){
+      const lbl=hdr[sc+k].replace(/^s\d+[\s\n]*/i,'').trim();
+      if(!lbl||/progress|done|count|score|remark/i.test(lbl)) break;
+      labels.push(lbl||`Session ${k+1}`);
+    }
+    result.sessions=labels.length?labels:DEFAULT_SESSIONS();
+
+    for(let r=hi+1;r<pRows.length;r++){
+      const row=pRows[r];
+      const name=(nc>=0?row[nc]:'')||''; 
+      if(!name||/^[#\-]/.test(name)) continue;
+      const statuses=result.sessions.map((_,k)=>norm(sc+k<row.length?row[sc+k]:''));
+      result.candidates.push({
+        name,
+        role:(rc>=0?row[rc]:'')||'QA Engineer',
+        joinDate:(dc>=0?row[dc]:'')||'',
+        statuses
+      });
+    }
+  }
+
+  // ── Topics Checklist tab ────────────────────────────────
+  try{
+    const cRows = await fetchSheet(CHECKLIST_TAB);
+    let cur='';
+    cRows.forEach(row=>{
+      const [idx='',c1='',c2='',c3=''] = row.map(c=>String(c||'').trim());
+      if(c1&&!c2&&!/^\d+$/.test(idx)&&c1.length>1){
+        cur=c1.replace(/^[^\w]+/,'').trim();
+        if(cur&&!result.topics[cur]) result.topics[cur]=[];
+      } else if(c2&&/^\d+$/.test(idx)&&cur){
+        result.topics[cur].push({topic:c2,priority:c3||'High'});
+      }
+    });
+  } catch(e){ console.warn('Could not load checklist tab:',e); }
+
+  if(!result.sessions.length) result.sessions=DEFAULT_SESSIONS();
+  if(!Object.keys(result.topics).length) result.topics=DEFAULT_TOPICS(result.sessions);
+  return result;
+}
+
+// ════════════════════════════════════════════════════════════
+//  POLLING — auto-refresh every REFRESH_MS
+// ════════════════════════════════════════════════════════════
+async function refresh(){
+  try{
+    allData = await loadData();
+    renderAll();
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('nav-sub').textContent=`Last updated: ${now} · Auto-refreshes every ${REFRESH_MS/1000}s`;
+    document.getElementById('conn-badge').textContent='● Live';
+    document.getElementById('conn-badge').className='badge badge-live';
+    if(!isFirstLoad){ flashBanner(); }
+    isFirstLoad=false;
+    document.getElementById('loading').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+  } catch(e){
+    console.error('Refresh error:',e);
+    document.getElementById('conn-badge').textContent='⚠ Error';
+    document.getElementById('conn-badge').className='badge badge-err';
+    if(isFirstLoad){
+      document.getElementById('loading-msg').innerHTML=
+        `<strong>Could not load data.</strong><br>${e.message}<br><br>`+
+        `Make sure your Google Sheet is shared as<br><em>"Anyone with the link can view"</em>`;
+    }
+  }
+}
+
+function flashBanner(){
+  const bar=document.getElementById('refresh-bar');
+  const fl=document.getElementById('flash-msg');
+  bar.style.display='block'; fl.classList.add('on');
+  setTimeout(()=>{bar.style.display='none';fl.classList.remove('on');},2500);
+}
+
+// Check SHEET_ID is configured
+if(SHEET_ID==='YOUR_GOOGLE_SHEET_ID_HERE'){
+  document.getElementById('loading').style.display='none';
+  document.getElementById('config-banner').style.display='block';
+  document.getElementById('dashboard').style.display='block';
+} else {
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+}
+
+// ════════════════════════════════════════════════════════════
+//  RENDER
+// ════════════════════════════════════════════════════════════
+function renderAll(){
+  buildCohortSel();
+  const cands=filtered();
+  updateMetrics(cands);
+  buildHeatmap(cands);
+  buildTable(cands);
+  buildSlicer(cands);
+  buildCharts(cands);
+}
+
+function filtered(){
+  const v=document.getElementById('cohort-sel').value;
+  return v==='all'?allData.candidates:allData.candidates.filter(c=>c.name===v);
+}
+
+function buildCohortSel(){
+  const sel=document.getElementById('cohort-sel'),prev=sel.value;
+  sel.innerHTML='<option value="all">All Candidates</option>';
+  allData.candidates.forEach(c=>{
+    const o=document.createElement('option');o.value=c.name;o.textContent=c.name;sel.appendChild(o);
+  });
+  if([...sel.options].some(o=>o.value===prev))sel.value=prev;
+}
+
+function set(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+
+function updateMetrics(cands){
+  const all=cands.flatMap(c=>c.statuses);
+  const done=all.filter(s=>s==='Completed').length;
+  const prog=all.filter(s=>s==='In Progress').length;
+  const avg=cands.length?Math.round(cands.reduce((a,c)=>{
+    const d=c.statuses.filter(s=>s==='Completed').length;
+    return a+(c.statuses.length?d/c.statuses.length:0);
+  },0)/cands.length*100):0;
+  set('m-total',cands.length);set('m-done',done);
+  set('m-done-sub',`out of ${all.length} total`);
+  set('m-prog',prog);set('m-avg',avg+'%');
+}
+
+function buildHeatmap(cands){
+  const sess=allData.sessions;
+  const lRow=document.getElementById('hm-labels');
+  lRow.style.gridTemplateColumns=`140px repeat(${sess.length},1fr)`;
+  lRow.innerHTML='<div></div>'+sess.map(s=>`<div class="hm-lbl">${s}</div>`).join('');
+  const area=document.getElementById('hm-area');area.innerHTML='';
+  if(!cands.length){area.innerHTML='<div class="empty">No candidates.</div>';return;}
+  cands.forEach((c,ci)=>{
+    const row=document.createElement('div');
+    row.className='hm-grid';
+    row.style.gridTemplateColumns=`140px repeat(${sess.length},1fr)`;
+    const lbl=document.createElement('div');
+    lbl.style.cssText='display:flex;align-items:center;gap:6px;overflow:hidden;padding-right:6px';
+    lbl.innerHTML=`<div class="avatar" style="width:24px;height:24px;min-width:24px;font-size:9px;background:${AV_BG[ci%AV_BG.length]};color:${COLORS[ci%COLORS.length]}">${inits(c.name)}</div>`+
+      `<span style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name.split('(')[0].trim()}</span>`;
+    row.appendChild(lbl);
+    sess.forEach((s,si)=>{
+      const st=(c.statuses[si]||'Not Started').trim();
+      const cell=document.createElement('div');
+      cell.className='hm-cell '+hmCls(st);
+      cell.innerHTML=`${si+1}<div class="tipbox">${c.name.split('(')[0].trim()} · ${s}<br>${st}</div>`;
+      row.appendChild(cell);
+    });
+    area.appendChild(row);
+  });
+}
+
+function ftbl(btn,f){
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');tblFilter=f;buildTable(filtered());
+}
+
+function buildTable(cands){
+  const tbody=document.getElementById('tbl-body');tbody.innerHTML='';
+  let shown=0;
+  cands.forEach((c,ci)=>{
+    const done=c.statuses.filter(s=>s==='Completed').length;
+    const prog=c.statuses.filter(s=>s==='In Progress').length;
+    const pct=c.statuses.length?Math.round(done/c.statuses.length*100):0;
+    const overall=pct>=80?'Completed':prog>0?'In Progress':'Not Started';
+    if(tblFilter!=='all'&&overall!==tblFilter)return;
+    shown++;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td style="color:var(--muted);font-size:12px">${ci+1}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="avatar" style="background:${AV_BG[ci%AV_BG.length]};color:${COLORS[ci%COLORS.length]}">${inits(c.name)}</div>
+        <div><div style="font-size:13px;font-weight:600">${c.name}</div><div style="font-size:11px;color:var(--muted)">${c.role}</div></div>
+      </div></td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div class="prog-track" style="flex:1"><div class="prog-bar" style="width:${pct}%;background:${COLORS[ci%COLORS.length]}"></div></div>
+        <span style="font-size:12px;font-weight:700;color:${COLORS[ci%COLORS.length]};min-width:34px">${pct}%</span>
+      </div></td>
+      <td style="text-align:center;font-weight:700;color:var(--green)">${done}</td>
+      <td style="text-align:center;font-weight:700;color:var(--amber)">${prog}</td>
+      <td><span class="pill ${pillCls(overall)}">${overall}</span></td>
+      <td style="color:var(--muted);font-size:12px">${c.joinDate||'—'}</td>`;
+    tbody.appendChild(tr);
+  });
+  if(!shown)tbody.innerHTML='<tr><td colspan="7" class="empty">No candidates match this filter.</td></tr>';
+}
+
+function buildSlicer(cands){
+  const sel=document.getElementById('sess-slicer');
+  sel.innerHTML='<option value="__all">All Sessions</option>'+
+    allData.sessions.map((s,i)=>`<option value="${i}">${i+1}. ${s}</option>`).join('');
+  sel.value=slicerVal;
+  renderTopics(slicerVal,cands);
+}
+
+function onSlicer(){
+  slicerVal=document.getElementById('sess-slicer').value;
+  renderTopics(slicerVal,filtered());
+}
+
+function renderTopics(sv,cands){
+  const panel=document.getElementById('topics-panel');panel.innerHTML='';
+  const sess=sv==='__all'
+    ?allData.sessions.map((s,i)=>({s,i}))
+    :[{s:allData.sessions[parseInt(sv)],i:parseInt(sv)}].filter(x=>x.s);
+  const total=sess.reduce((a,{s})=>a+(allData.topics[s]||[]).length,0);
+  const badge=document.getElementById('cnt-badge');
+  if(badge)badge.textContent=total+' topic'+(total!==1?'s':'')+(sv==='__all'?' · all sessions':'');
+  if(!sess.length){panel.innerHTML='<div class="empty">No topics found.</div>';return;}
+  sess.forEach(({s,i:si})=>{
+    const list=allData.topics[s]||[];if(!list.length)return;
+    if(sv==='__all'){
+      const grp=document.createElement('div');grp.className='sess-grp';grp.textContent=s;panel.appendChild(grp);
+    }
+    list.forEach(t=>{
+      const topic=typeof t==='object'?t.topic:t;
+      const pri=typeof t==='object'?t.priority:'High';
+      const row=document.createElement('div');row.className='topic-row';
+      const chips=cands.map((c,ci)=>{
+        const st=(c.statuses[si]||'Not Started').trim();
+        const col=st==='Completed'?'var(--green)':st==='In Progress'?'var(--amber)':'var(--muted)';
+        const bg=st==='Completed'?'var(--green-bg)':st==='In Progress'?'var(--amber-bg)':'var(--surface2)';
+        return `<span class="chip" style="background:${bg};color:${col}">${inits(c.name)}: ${st==='Completed'?'✓ Done':st==='In Progress'?'↻ Prog':'· Pending'}</span>`;
+      }).join('');
+      row.innerHTML=`<span class="topic-name">${topic}</span><span class="pri ${pri==='High'?'pri-h':'pri-m'}">${pri}</span>${chips}`;
+      panel.appendChild(row);
+    });
+  });
+}
+
+function destroyChart(k){if(charts[k]){charts[k].destroy();delete charts[k];}}
+
+function buildCharts(cands){
+  const sess=allData.sessions;
+  destroyChart('r');destroyChart('d');destroyChart('b');
+  charts.r=new Chart(document.getElementById('radarChart'),{
+    type:'radar',
+    data:{labels:sess,datasets:cands.map((c,ci)=>({
+      label:c.name,data:c.statuses.map(s=>SV[s]||0),
+      borderColor:COLORS[ci%COLORS.length],backgroundColor:COLORS[ci%COLORS.length]+'22',
+      borderWidth:2,pointRadius:4,pointBackgroundColor:COLORS[ci%COLORS.length]
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{r:{min:0,max:1,ticks:{display:false},grid:{color:'rgba(128,128,128,.15)'},
+        pointLabels:{font:{size:9},color:'#6b7280'}}}}
+  });
+  document.getElementById('radar-legend').innerHTML=
+    cands.map((c,ci)=>`<span><span class="ld" style="background:${COLORS[ci%COLORS.length]}"></span>${c.name.split(' ')[0]}</span>`).join('');
+
+  const all=cands.flatMap(c=>c.statuses);
+  const [dn,pr,ns,df]=['Completed','In Progress','Not Started','Deferred'].map(s=>all.filter(x=>x===s).length);
+  charts.d=new Chart(document.getElementById('donutChart'),{
+    type:'doughnut',
+    data:{labels:['Completed','In Progress','Not Started','Deferred'],
+      datasets:[{data:[dn,pr,ns,df],backgroundColor:['#16a34a','#d97706','#dc2626','#9ca3af'],borderWidth:0,hoverOffset:6}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'70%',
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}`}}}}
+  });
+  charts.b=new Chart(document.getElementById('barChart'),{
+    type:'bar',
+    data:{labels:sess,datasets:cands.map((c,ci)=>({
+      label:c.name,data:c.statuses.map(s=>SV[s]||0),
+      backgroundColor:COLORS[ci%COLORS.length]+(ci>0?'bb':''),borderRadius:3,borderSkipped:false
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{font:{size:10},color:'#6b7280',autoSkip:false,maxRotation:30},grid:{display:false}},
+        y:{min:0,max:1,ticks:{stepSize:.5,callback:v=>v===1?'Done':v===.5?'In Prog':'',font:{size:10},color:'#6b7280'},grid:{color:'rgba(128,128,128,.1)'}}
+      }}
+  });
+  document.getElementById('bar-legend').innerHTML=
+    cands.map((c,ci)=>`<span><span class="ld" style="background:${COLORS[ci%COLORS.length]}"></span>${c.name.split(' ')[0]}</span>`).join('');
+}
+
+function DEFAULT_SESSIONS(){
+  return['Overview','Triage','Co. Profile','Cloud Policy','GHA','Content Pt1','Content Pt2','Manual Pt1','Manual Pt2','Matter'];
+}
+function DEFAULT_TOPICS(sessions){
+  const map={
+    'Overview':[['HHPE working time & resources','High'],['Project overview, Partners, TAM','High'],['Different components & Taskflows','High'],['Partner types P0, P1 & P2','High'],['Internal review structure','High']],
+    'Triage':[['Stage-1 On-call TAM understanding','High'],['Queue / Taskflows to monitor','High'],['Identifying TAM from bug/description','High'],['Commenting/Routing to TAM','High'],['SLOs for P0, P1 & P2','High']],
+    'Co. Profile':[['Company Name, Website, Logo review','Medium'],['Privacy Policy review','High'],['Developer Company & name','Medium'],['Marketing / Business name & email','Medium'],['Special partner: Tuya','Medium'],['SLO understanding','High']],
+    'Cloud Policy':[['Cloud Policy overview','High'],['Cloud Certificate review','High'],['Cloud Policy Approach for certification','High'],['Finding CP status','High'],['HEPA dashboard & Auto check','High'],['Review-hub Dashboard','High']],
+    'GHA':[['Tool: Reha','High'],['Tool: Taskflow','High'],['Tool: Review-hub','High'],['Tool: Buganizer','High'],['Working with GHA','High'],['Home graph viewer','Medium']],
+    'Content Pt1':[['Project Name & Integration Name','High'],['App branding & Consent page','High'],['OAuth page & Integration linking','High'],['App flip','Medium']],
+    'Content Pt2':[['Supported Device types & traits','High'],['Test result & SCENE type device','High'],['2FA','High'],['Product link & Notification','High']],
+    'Manual Pt1':[['Identifying need for manual testing','High'],['Setup & Communication to Partner','High'],['Test plan preparation','High']],
+    'Manual Pt2':[['Execution and logging','High'],['Updating results','High'],['Updating bugs in Buganizer','High']],
+    'Matter':[['Matter Policy & Certification','High'],['CSA & DCL site navigation','High'],['Child & Family device handling','High'],['PID & VID understanding','High'],['Dedupe video process','Medium']]
+  };
+  const out={};
+  sessions.forEach(s=>{
+    const key=Object.keys(map).find(k=>s.toLowerCase().includes(k.toLowerCase()))||s;
+    out[s]=(map[key]||[]).map(([topic,priority])=>({topic,priority}));
+  });
+  return out;
+}
+</script>
+</body>
+</html>
